@@ -14,7 +14,8 @@ int max(int a, int b)
 
 int maxargsExp(A_exp e)
 {
-    switch (e->kind) {
+    switch (e->kind)
+    {
     case A_idExp:
         return 0;
     case A_numExp:
@@ -24,19 +25,20 @@ int maxargsExp(A_exp e)
     case A_eseqExp:
         return max(maxargs(e->u.eseq.stm), maxargsExp(e->u.eseq.exp));
     default:
-        assert(!"A_exp.kind is not defined");
+        assert(!"should not get here");
     }
 }
 
 int maxargsExplist(A_expList el)
 {
-    switch (el->kind) {
+    switch (el->kind)
+    {
     case A_pairExpList:
         return max(maxargsExp(el->u.pair.head), maxargsExplist(el->u.pair.tail));
     case A_lastExpList:
         return maxargsExp(el->u.last);
     default:
-        assert("A_expList.kind is not defined");
+        assert(!"should not get here");
     }
 }
 
@@ -44,7 +46,8 @@ int countExp(A_expList el)
 {
     int cnt = 1;
     A_expList el_ = el;
-    for (; el_->kind == A_pairExpList; el_ = el_->u.pair.tail) {
+    for (; el_->kind == A_pairExpList; el_ = el_->u.pair.tail)
+    {
         cnt++;
     }
 
@@ -53,7 +56,8 @@ int countExp(A_expList el)
 
 int maxargs(A_stm s)
 {
-    switch (s->kind) {
+    switch (s->kind)
+    {
     case A_compoundStm:
         return max(maxargs(s->u.compound.stm1), maxargs(s->u.compound.stm2));
     case A_assignStm:
@@ -61,13 +65,153 @@ int maxargs(A_stm s)
     case A_printStm:
         return max(countExp(s->u.print.exps), maxargsExplist(s->u.print.exps));
     default:
-        assert(!"A_stm.kind is not defined");
+        assert(!"should not get here");
     }
+}
+
+//-------------------------------------------
+typedef struct table *Table_;
+struct table
+{
+    string id;
+    int value;
+    Table_ tail;
+};
+typedef struct intAndTable *IntAndTable_;
+struct intAndTable
+{
+    int i;
+    Table_ t;
+};
+
+void interp(A_stm);
+Table_ Table(string, int, struct table*);
+IntAndTable_ IntAndTable(int, Table_);
+Table_ interpStm(A_stm, Table_);
+Table_ update(Table_, string, int);
+IntAndTable_ interpExp(A_exp, Table_);
+IntAndTable_ interpExpList(A_expList, Table_);
+int lookup(Table_, string);
+
+Table_ Table(string id, int value, struct table *tail)
+{
+    Table_ t = checked_malloc(sizeof(*t));
+    t->id = id;
+    t->value = value;
+    t->tail = tail;
+    return t;
+}
+
+IntAndTable_ IntAndTable(int i, Table_ t)
+{
+    IntAndTable_ it = checked_malloc(sizeof(*it));
+    it->i = i;
+    it->t = t;
+    return it;
+}
+
+Table_ interpStm(A_stm s, Table_ t)
+{
+    IntAndTable_ it;
+    switch (s->kind)
+    {
+    case A_compoundStm:
+        t = interpStm(s->u.compound.stm1, t);
+        t = interpStm(s->u.compound.stm2, t);
+        return t;
+    case A_assignStm:
+        it = interpExp(s->u.assign.exp, t);
+        t = update(it->t, s->u.assign.id, it->i);
+        return t;
+    case A_printStm:
+        it = interpExpList(s->u.print.exps, t);
+        return it->t;
+    default:
+        assert(!"should not get here");
+    }
+}
+
+IntAndTable_ interpExp(A_exp e, Table_ t)
+{
+    switch (e->kind)
+    {
+    case A_idExp:
+        return IntAndTable(lookup(t, e->u.id), t);
+    case A_numExp:
+        return IntAndTable(e->u.num, t);
+    case A_opExp:
+    {
+        IntAndTable_ left = interpExp(e->u.op.left, t);
+        IntAndTable_ right = interpExp(e->u.op.right, t);
+        switch (e->u.op.oper)
+        {
+        case A_plus:
+            return IntAndTable(left->i + right->i, t);
+        case A_minus:
+            return IntAndTable(left->i - right->i, t);
+        case A_times:
+            return IntAndTable(left->i * right->i, t);
+        case A_div:
+            return IntAndTable(left->i / right->i, t);
+        default:
+            assert(!"should not get here");
+        }
+    }
+    case A_eseqExp:
+        t = interpStm(e->u.eseq.stm, t);
+        return interpExp(e->u.eseq.exp, t);
+    default:
+        assert(!"should not get here");
+    }
+}
+
+IntAndTable_ interpExpList(A_expList el, Table_ t)
+{
+    IntAndTable_ it;
+
+    switch (el->kind)
+    {
+    case A_pairExpList:
+        it = interpExp(el->u.pair.head, t);
+        printf("%d ", it->i);
+        return interpExpList(el->u.pair.tail, it->t);
+    case A_lastExpList:
+        it = interpExp(el->u.last, t);
+        printf("%d\n", it->i);
+        return it;
+    default:
+        assert(!"should not get here");
+    }
+}
+
+Table_ update(Table_ t, string id, int value)
+{
+    return Table(id, value, t);
+}
+
+int lookup(Table_ t, string key)
+{
+    Table_ temp = t;
+    while (temp != NULL)
+    {
+        if (temp->id == key)
+        {
+            return t->value;
+        }
+        temp = temp->tail;
+    }
+    assert(!"should not get here");
+}
+
+void interp(A_stm s)
+{
+    interpStm(s, NULL);
 }
 
 int main()
 {
     A_stm s = prog();
     printf("result of maxargs is %d\n", maxargs(s));
+    interp(s);
     return 0;
 }

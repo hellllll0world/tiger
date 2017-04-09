@@ -9,7 +9,8 @@
 void *checked_malloc(int len)
 {
     void *p = malloc(len);
-    if (!p) {
+    if (!p)
+    {
         fprintf(stderr, "\nRan out of memory!\n");
         exit(1);
     }
